@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Speedometer</title>
+  <style>
+    body { font-family: system-ui, Arial, sans-serif; margin: 0; padding: 16px; }
+    .wrap { max-width: 520px; margin: 0 auto; }
+    .card { border: 1px solid #ddd; border-radius: 16px; padding: 16px; }
+    .big { font-size: 64px; font-weight: 800; line-height: 1; }
+    .unit { font-size: 18px; opacity: 0.7; margin-left: 8px; }
+    .row { display: flex; gap: 12px; margin-top: 12px; flex-wrap: wrap; }
+    .stat { flex: 1; min-width: 140px; border: 1px solid #eee; border-radius: 12px; padding: 12px; }
+    .label { font-size: 12px; opacity: 0.7; }
+    .value { font-size: 22px; font-weight: 700; margin-top: 6px; }
+    button { font-size: 16px; padding: 12px 14px; border-radius: 12px; border: 1px solid #ccc; background: #f7f7f7; }
+    button:disabled { opacity: 0.5; }
+    .buttons { display: flex; gap: 10px; margin-top: 14px; }
+    .msg { margin-top: 10px; font-size: 13px; opacity: 0.8; }
+    .small { font-size: 12px; opacity: 0.7; margin-top: 10px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <div>
+        <div class="label">CURRENT SPEED</div>
+        <div class="big"><span id="speedNow">0.0</span><span class="unit">mph</span></div>
+      </div>
+
+      <div class="row">
+        <div class="stat">
+          <div class="label">AVERAGE SPEED</div>
+          <div class="value"><span id="speedAvg">0.0</span> mph</div>
+        </div>
+        <div class="stat">
+          <div class="label">DISTANCE</div>
+          <div class="value"><span id="distance">0.00</span> mi</div>
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="stat">
+          <div class="label">ELAPSED TIME</div>
+          <div class="value"><span id="elapsed">00:00</span></div>
+        </div>
+        <div class="stat">
+          <div class="label">GPS ACCURACY</div>
+          <div class="value"><span id="accuracy">--</span> m</div>
+        </div>
+      </div>
+
+      <div class="buttons">
+        <button id="btnStart">Start</button>
+        <button id="btnStop" disabled>Stop</button>
+        <button id="btnReset">Reset</button>
+      </div>
+
+      <div class="msg" id="msg">Ready. Tap Start and allow location permission.</div>
+      <div class="small">
+        Tip: For best results, go outside with a clear view of the sky.
+      </div>
+    </div>
+  </div>
+
+<script>
+(() => {
+  // ===== Helpers =====
+  const $ = (id) => document.getElementById(id);
+
+  function toMMSS(seconds) {
+    const m = Math.floor(seconds / 60);
+    const s = Math.floor(seconds % 60);
+    return String(m).padStart(2, "0") + ":" + String(s).padStart(2, "0");
+  }
+
+  // Haversine distance between two GPS points (meters)
+  function haversineMeters(lat1, lon1, lat2, lon2) {
+    const R = 6371000; // Earth radius meters
+    const toRad = (d) => d * Math.PI / 180;
+    const dLat = toRad(lat2 - lat1);
+    const dLon = toRad(lon2 - lon1);
+    const a =
+      Math.sin(dLat / 2) ** 2 +
+      Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
+  }
+
+  function mpsToMph(mps) { return mps * 2.2369362920544; }
+  function metersToMiles(m) { return m / 1609.344; }
+
+  // Simple smoothing: moving average of last N speed readings
+  const speedWindow = [];
+  const SPEED_WINDOW_SIZE = 6;
+  function smoothSpeed(mph) {
+    speedWindow.push(mph);
+    if (speedWindow.length > SPEED_WINDOW_SIZE) speedWindow.shift();
+    const avg = speedWindow.reduce((a,b) => a+b, 0) / speedWindow.length;
+    return avg;
+  }
+
+  // ===== State =====
+  let watchId = null;
+  let running = false;
+
+  let startTimeMs = 0;
+  let lastFix = null; // {lat, lon, timeMs}
+  let totalDistanceM = 0;
+
+  let tickTimer = null;
+
+  // ===== UI update =====
+  function setMsg(text) { $("msg").textContent = text; }
+
+  function updateElapsed() {
+    if (!running) return;
+    const elapsedSec = (Date.now() - startTimeMs) / 1000;
+    $("elapsed").textContent = toMMSS(elapsedSec);
+    // Average speed based on distance / elapsed time (more stable than GPS speed at times)
+    const miles = metersToMiles(totalDistanceM);
+    const hours = elapsedSec / 3600;
+    const avgMph = hours > 0 ? (miles / hours) : 0;
+    $("speedAvg").textContent = avgMph.toFixed(1);
+    $("distance").textContent = miles.toFixed(2);
+  }
+
+  function startTick() {
+    stopTick();
+    tickTimer = setInterval(updateElapsed, 500);
+  }
+  function stopTick() {
+    if (tickTimer) clearInterval(tickTimer);
+    tickTimer = null;
+  }
+
+  function resetAll() {
+    speedWindow.length = 0;
+    totalDistanceM = 0;
+    lastFix = null;
+    startTimeMs = Date.now();
+    $("speedNow").textContent = "0.0";
+    $("speedAvg").textContent = "0.0";
+    $("distance").textContent = "0.00";
+    $("elapsed").textContent = "00:00";
+    $("accuracy").textContent = "--";
+    setMsg("Reset. Tap Start and allow location permission.");
+  }
+
+  // ===== GPS handling =====
+  function onPosition(pos) {
+    const { latitude: lat, longitude: lon, accuracy } = pos.coords;
+    const timeMs = pos.timestamp || Date.now();
+    $("accuracy").textContent = Number.isFinite(accuracy) ? accuracy.toFixed(0) : "--";
+
+    // Ignore really bad fixes (helps when GPS is first locking)
+    if (Number.isFinite(accuracy) && accuracy > 50) {
+      setMsg("GPS accuracy is poor (>" + accuracy.toFixed(0) + "m). Waiting for a better lock…");
+      return;
+    }
+
+    // Compute distance from last fix
+    if (lastFix) {
+      const dM = haversineMeters(lastFix.lat, lastFix.lon, lat, lon);
+      const dtS = (timeMs - lastFix.timeMs) / 1000;
+
+      // Filter out nonsense spikes (teleporting / crazy jumps)
+      if (dtS > 0) {
+        const mps = dM / dtS;
+        const mph = mpsToMph(mps);
+
+        // Reject huge spikes (e.g. GPS glitch)
+        if (mph < 80) {
+          // Also reject tiny jitter when you're basically stopped
+          if (dM >= 1.5) totalDistanceM += dM;
+
+          const smoothed = smoothSpeed(mph);
+          $("speedNow").textContent = smoothed.toFixed(1);
+          setMsg("Tracking…");
+        }
+      }
+    } else {
+      setMsg("GPS locked. Tracking…");
+    }
+
+    lastFix = { lat, lon, timeMs };
+    updateElapsed();
+  }
+
+  function onError(err) {
+    running = false;
+    $("btnStart").disabled = false;
+    $("btnStop").disabled = true;
+    stopTick();
+
+    if (err.code === 1) setMsg("Location permission denied. Enable it and try again.");
+    else if (err.code === 2) setMsg("Position unavailable. Try going outside / toggling Location.");
+    else if (err.code === 3) setMsg("Timed out getting GPS. Try again.");
+    else setMsg("GPS error: " + err.message);
+  }
+
+  function start() {
+    if (!navigator.geolocation) {
+      setMsg("Geolocation not supported on this browser.");
+      return;
+    }
+    if (running) return;
+
+    running = true;
+    startTimeMs = Date.now();
+    lastFix = null;
+
+    $("btnStart").disabled = true;
+    $("btnStop").disabled = false;
+
+    setMsg("Requesting GPS… allow permission when prompted.");
+
+    watchId = navigator.geolocation.watchPosition(onPosition, onError, {
+      enableHighAccuracy: true,
+      maximumAge: 1000,   // accept a recent cached fix
+      timeout: 15000
+    });
+
+    startTick();
+  }
+
+  function stop() {
+    if (!running) return;
+    running = false;
+
+    $("btnStart").disabled = false;
+    $("btnStop").disabled = true;
+
+    if (watchId !== null) navigator.geolocation.clearWatch(watchId);
+    watchId = null;
+
+    stopTick();
+    setMsg("Stopped.");
+  }
+
+  // ===== Wire up buttons =====
+  $("btnStart").addEventListener("click", start);
+  $("btnStop").addEventListener("click", stop);
+  $("btnReset").addEventListener("click", () => {
+    stop();
+    resetAll();
+  });
+
+  resetAll();
+})();
+</script>
+</body>
+</html>

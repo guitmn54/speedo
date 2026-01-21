@@ -63,6 +63,9 @@
       </div>
     </div>
   </div>
+// --- Snack observer state ---
+let effortStartMs = null;
+let snackGranted = false;
 
 <script>
 (() => {
@@ -185,7 +188,7 @@
     }
 
     lastFix = { lat, lon, timeMs };
-    updateElapsed();
+    updateElapsed();updateElapsed().
   }
 
   function onError(err) {
@@ -245,6 +248,27 @@
   $("btnReset").addEventListener("click", () => {
     stop();
     resetAll();
+  // --- Snack observer (parallel rung) ---
+function snackObserver(avgSpeedMph) {
+  const SPEED_THRESHOLD = 6;      // mph
+  const EFFORT_TIME_MS = 30_000;  // 30 seconds
+
+  if (!running || snackGranted) return;
+
+  if (avgSpeedMph >= SPEED_THRESHOLD) {
+    if (!effortStartMs) {
+      effortStartMs = Date.now(); // start timer
+    }
+
+    if (Date.now() - effortStartMs >= EFFORT_TIME_MS) {
+      setQuip("Ride Co-Pilot: Effort detected. Snack privileges under review.");
+      snackGranted = true; // latch
+    }
+  } else {
+    // speed dropped — reset timer
+    effortStartMs = null;
+  }
+}  
   });
 
   resetAll();
@@ -252,3 +276,4 @@
 </script>
 </body>
 </html>
+

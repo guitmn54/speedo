@@ -248,7 +248,7 @@ let snackGranted = false;
 // --- Snack observer (parallel rung) ---
 function snackObserver(avgSpeedMph) {
   const SPEED_THRESHOLD = 2;     // mph
-  const EFFORT_TIME_MS = 800;  // 30 seconds
+  const EFFORT_TIME_MS = 3000;  // 30 seconds
 
   if (!running || snackGranted) return;
 
@@ -278,6 +278,7 @@ function snackObserver(avgSpeedMph) {
 </script>
 </body>
 </html>
+
 
 
 

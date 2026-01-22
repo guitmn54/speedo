@@ -126,6 +126,8 @@ let snackGranted = false;
     const avgMph = hours > 0 ? (miles / hours) : 0;
     $("speedAvg").textContent = avgMph.toFixed(1);
     $("distance").textContent = miles.toFixed(2);
+    snackObserver(avgMph);
+
   }
 
   function startTick() {
@@ -142,6 +144,9 @@ let snackGranted = false;
     totalDistanceM = 0;
     lastFix = null;
     startTimeMs = Date.now();
+    effortStartMs = null;
+    snackGranted = false;
+
     $("speedNow").textContent = "0.0";
     $("speedAvg").textContent = "0.0";
     $("distance").textContent = "0.00";
@@ -240,6 +245,24 @@ let snackGranted = false;
     stopTick();
     setMsg("Stopped.");
   }
+// --- Snack observer (parallel rung) ---
+function snackObserver(avgSpeedMph) {
+  const SPEED_THRESHOLD = 6;     // mph
+  const EFFORT_TIME_MS = 30000;  // 30 seconds
+
+  if (!running || snackGranted) return;
+
+  if (avgSpeedMph >= SPEED_THRESHOLD) {
+    if (!effortStartMs) effortStartMs = Date.now();
+
+    if (Date.now() - effortStartMs >= EFFORT_TIME_MS) {
+      setMsg("Ride Co-Pilot: Effort detected. Snack privileges under review.");
+      snackGranted = true; // latch
+    }
+  } else {
+    effortStartMs = null; // reset timer if you slow down
+  }
+}
 
   // ===== Wire up buttons =====
   $("btnStart").addEventListener("click", start);
@@ -247,27 +270,7 @@ let snackGranted = false;
   $("btnReset").addEventListener("click", () => {
     stop();
     resetAll();
-  // --- Snack observer (parallel rung) ---
-function snackObserver(avgSpeedMph) {
-  const SPEED_THRESHOLD = 6;      // mph
-  const EFFORT_TIME_MS = 30_000;  // 30 seconds
-
-  if (!running || snackGranted) return;
-
-  if (avgSpeedMph >= SPEED_THRESHOLD) {
-    if (!effortStartMs) {
-      effortStartMs = Date.now(); // start timer
-    }
-
-    if (Date.now() - effortStartMs >= EFFORT_TIME_MS) {
-      setMsg("Ride Co-Pilot: Effort detected. Snack privileges under review.");
-      snackGranted = true; // latch
-    }
-  } else {
-    // speed dropped — reset timer
-    effortStartMs = null;
-  }
-}  
+ 
   });
 
   resetAll();
@@ -275,6 +278,7 @@ function snackObserver(avgSpeedMph) {
 </script>
 </body>
 </html>
+
 
 
 

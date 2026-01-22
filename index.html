@@ -261,7 +261,7 @@ function snackObserver(avgSpeedMph) {
     }
 
     if (Date.now() - effortStartMs >= EFFORT_TIME_MS) {
-      setQuip("Ride Co-Pilot: Effort detected. Snack privileges under review.");
+      setMsg("Ride Co-Pilot: Effort detected. Snack privileges under review.");
       snackGranted = true; // latch
     }
   } else {
@@ -276,4 +276,5 @@ function snackObserver(avgSpeedMph) {
 </script>
 </body>
 </html>
+
 

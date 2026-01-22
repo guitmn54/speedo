@@ -63,10 +63,6 @@
       </div>
     </div>
   </div>
-// --- Snack observer state ---
-let effortStartMs = null;
-let snackGranted = false;
-
 <script>
 (() => {
   // ===== Helpers =====
@@ -107,6 +103,9 @@ let snackGranted = false;
   // ===== State =====
   let watchId = null;
   let running = false;
+// --- Snack observer state ---
+let effortStartMs = null;
+let snackGranted = false;
 
   let startTimeMs = 0;
   let lastFix = null; // {lat, lon, timeMs}
@@ -276,5 +275,6 @@ function snackObserver(avgSpeedMph) {
 </script>
 </body>
 </html>
+
 
 
